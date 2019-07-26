@@ -16,6 +16,8 @@ class ActorCritic:
     self.lra = learning_rate_actor
     self.lrc = learning_rate_critic
     self.gamma = reward_decay
+
+    self.memory = []
     
     self._build_net()
 
@@ -28,9 +30,9 @@ class ActorCritic:
 
   def _build_net(self):
     with tf.variable_scope('actor'):
-      self.s = tf.placeholder(tf.float32, [1, self.state_dims], name='state')
-      self.a = tf.placeholder(tf.int32, None, name='actions')
-      self.td_error = tf.placeholder(tf.float32, None, name='td_error')
+      self.s = tf.placeholder(tf.float32, [None, self.state_dims], name='state')
+      self.a = tf.placeholder(tf.int32, [None], name='actions')
+      self.td_error = tf.placeholder(tf.float32, [None], name='td_error')
 
       with tf.variable_scope('network'):
         h1 = tf.layers.dense(self.s, 20, activation=tf.nn.relu)
@@ -39,25 +41,28 @@ class ActorCritic:
       self.all_act_prob = tf.nn.softmax(all_act)
 
       with tf.variable_scope('loss'):
-        log_prob = tf.log(self.all_act_prob[0, self.a])
-        self.aloss = -tf.reduce_mean(log_prob * self.td_error)
+        neg_log_prob = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=all_act, labels=self.a)
+        self.aloss = tf.reduce_mean(neg_log_prob * self.td_error)
       with tf.variable_scope('train'):
         self.atrain_op = tf.train.AdamOptimizer(self.lra).minimize(self.aloss)
 
     with tf.variable_scope('critic'):
-      self.s_ = tf.placeholder(tf.float32, [1, self.state_dims], name='nstate')
-      self.v_ = tf.placeholder(tf.float32, [1, 1], name='v_next')
-      self.r = tf.placeholder(tf.float32, None, name='reward')
+      self.s_ = tf.placeholder(tf.float32, [None, self.state_dims], name='nstate')
+      self.v_ = tf.placeholder(tf.float32, [None, 1], name='v_next')
+      self.r = tf.placeholder(tf.float32, [None], name='reward')
 
       with tf.variable_scope('network'):
         h1 = tf.layers.dense(self.s_, 20, activation=tf.nn.relu)
         self.v = tf.layers.dense(h1, 1, activation=None)
 
       with tf.variable_scope('squared_TD_error'):
-        self.ctd_error = self.r + self.gamma * self.v_ - self.v
-        self.closs = tf.square(self.ctd_error)
+        self.ctd_error = self.r + tf.reshape( self.gamma * self.v_ - self.v, [-1] )
+        self.closs = tf.reduce_mean(tf.square(self.ctd_error))
       with tf.variable_scope('train'):
         self.ctrain_op = tf.train.AdamOptimizer(self.lrc).minimize(self.closs)
+
+  def store_transition(self, s, a, r, ns):
+    self.memory.append( (s, a, r, ns) )
 
   def choose_action(self, state, _eval=False):
     state = state[np.newaxis, :]
@@ -68,8 +73,11 @@ class ActorCritic:
 
     return action
 
-  def learn(self, s, a, r, ns):
-    s, ns = s[np.newaxis, :], ns[np.newaxis, :]
+  def learn(self):
+    s  = [ m[0] for m in self.memory ]
+    a  = [ m[1] for m in self.memory ]
+    r  = [ m[2] for m in self.memory ]
+    ns = [ m[3] for m in self.memory ]
     
     # update critic
     nv = self.sess.run(self.v, feed_dict={ self.s_: ns })
@@ -77,6 +85,7 @@ class ActorCritic:
                       self.s_: s,
                       self.v_: nv,
                       self.r: r })
+    print(nv)
 
     # update actor
     self.sess.run(self.atrain_op, feed_dict={

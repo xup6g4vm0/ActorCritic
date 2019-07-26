@@ -17,11 +17,12 @@ def train():
       ns, reward, done, _ = env.step(action)
       Reward += reward
 
-      RL.learn(obs, action, reward, ns)
+      RL.store_transition(obs, action, reward, ns)
 
       obs = ns
 
       if done:
+        RL.learn()
         print('episode: {}, Reward: {}'.format(episode, Reward))
         break
 
