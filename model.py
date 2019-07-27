@@ -55,7 +55,7 @@ class ActorCritic:
         self.v = tf.layers.dense(h1, 1, activation=None)
 
       with tf.variable_scope('squared_TD_error'):
-        ctd_error = tf.reshape( self.v, [-1]) - self.r
+        ctd_error = tf.reshape( self.v, [-1] ) - self.r
         self.closs = tf.reduce_mean(tf.square(ctd_error))
       with tf.variable_scope('train'):
         self.ctrain_op = tf.train.AdamOptimizer(self.lrc).minimize(self.closs)
@@ -68,7 +68,10 @@ class ActorCritic:
 
     action_prob = self.sess.run(self.all_act_prob, feed_dict={
                       self.s: state })
-    action = np.random.choice(self.action_dims, p=action_prob[0])
+    if _eval:
+      action = np.argmax( action_prob )
+    else:
+      action = np.random.choice(self.action_dims, p=action_prob[0])
 
     return action
 
@@ -83,10 +86,8 @@ class ActorCritic:
         self.s_: s,
         self.r: r })
 
-    nv = self.sess.run(self.v, feed_dict={
-        self.s_: ns })
-    v = self.sess.run(self.v, feed_dict={
-        self.s_: s })
+    nv = self.sess.run(self.v, feed_dict={ self.s_: ns })
+    v = self.sess.run(self.v, feed_dict={ self.s_: s })
 
     # update actor
     self.sess.run(self.atrain_op, feed_dict={
