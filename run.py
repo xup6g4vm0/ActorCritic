@@ -4,7 +4,7 @@ import numpy as np
 import gym
 
 def train():
-  for episode in range(10000):
+  for episode in range(1000):
     obs = env.reset()
 
     Reward = 0
@@ -33,7 +33,7 @@ def _eval():
     Reward = 0
 
     while True:
-      env.render()
+      # env.render()
 
       action = RL.choose_action(obs, True)
 

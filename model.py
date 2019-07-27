@@ -48,7 +48,6 @@ class ActorCritic:
 
     with tf.variable_scope('critic'):
       self.s_ = tf.placeholder(tf.float32, [None, self.state_dims], name='nstate')
-      self.v_ = tf.placeholder(tf.float32, [None, 1], name='v_next')
       self.r = tf.placeholder(tf.float32, [None], name='reward')
 
       with tf.variable_scope('network'):
@@ -56,8 +55,8 @@ class ActorCritic:
         self.v = tf.layers.dense(h1, 1, activation=None)
 
       with tf.variable_scope('squared_TD_error'):
-        self.ctd_error = self.r + tf.reshape( self.gamma * self.v_ - self.v, [-1] )
-        self.closs = tf.reduce_mean(tf.square(self.ctd_error))
+        ctd_error = tf.reshape( self.v, [-1]) - self.r
+        self.closs = tf.reduce_mean(tf.square(ctd_error))
       with tf.variable_scope('train'):
         self.ctrain_op = tf.train.AdamOptimizer(self.lrc).minimize(self.closs)
 
@@ -76,20 +75,33 @@ class ActorCritic:
   def learn(self):
     s  = [ m[0] for m in self.memory ]
     a  = [ m[1] for m in self.memory ]
-    r  = [ m[2] for m in self.memory ]
+    r = self._discount_and_norm_reward()
     ns = [ m[3] for m in self.memory ]
     
     # update critic
-    nv = self.sess.run(self.v, feed_dict={ self.s_: ns })
-    _, tde = self.sess.run([self.ctrain_op, self.ctd_error], feed_dict={
-                      self.s_: s,
-                      self.v_: nv,
-                      self.r: r })
-    print(nv)
+    self.sess.run(self.ctrain_op, feed_dict={
+        self.s_: s,
+        self.r: r })
+
+    nv = self.sess.run(self.v, feed_dict={
+        self.s_: ns })
+    v = self.sess.run(self.v, feed_dict={
+        self.s_: s })
 
     # update actor
     self.sess.run(self.atrain_op, feed_dict={
         self.s: s,
         self.a: a,
-        self.td_error: tde})
+        self.td_error: np.reshape(nv-v, -1)})
 
+  def _discount_and_norm_reward(self):
+    discounted_ep_rs = np.zeros(len(self.memory))
+    cummluative_reward = 0
+    for t in reversed(range(0, len(self.memory))):
+      cummluative_reward = self.memory[t][2] + cummluative_reward * self.gamma
+      discounted_ep_rs[t] = cummluative_reward
+
+    discounted_ep_rs -= np.mean(discounted_ep_rs)
+    discounted_ep_rs /= np.std(discounted_ep_rs)
+
+    return discounted_ep_rs
